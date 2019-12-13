@@ -1,0 +1,130 @@
+#!/usr/bin/python3
+
+from picamera import PiCamera
+from picamera.array import PiRGBArray
+
+import RPi.GPIO as GPIO
+
+import numpy as np
+
+class Sonar:
+
+    def __init__(self, txPin=11, rxPin=8):
+        self.soundSpeed = 340
+        GPIO.setup(txPin, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(rxPin, GPIO.IN)
+        
+        self.tx = txPin
+        self.rx = rxPin
+
+
+    def __del__(self):
+        pass
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self,exception_type, exception_value, traceback):
+        self.close()
+
+    def close(self):
+        GPIO.cleanup() #???
+
+    def ping(self, maxRange=1, pulseWidth=.000015): #TODO: impliment distance
+        '''Measure return time of a single ping'''
+
+        # Transmit ping
+        GPIO.output(self.tx, GPIO.HIGH)
+        time.sleep(pulseWidth)
+        GPIO.output(self.tx, GPIO.LOW)
+
+        while not GPIO.input(self.rx):
+            #??? waiting for ping to stop. Should already be done though
+            # Forces the time to start/end at end of ping. Falling edge
+            pass 
+        t1 = time.time()
+        while GPIO.input(self.rx):
+            # Forces the time to start/end at end of ping. Falling edge
+            pass
+        t2 = time.time()
+        return (t2-t1)*soundSpeed/2
+
+
+class LineSensor:
+    '''Line sensor consisting of 3 elements in a linear array'''
+    
+    def __init__(self,pin_middle, pin_left, pin_right, blackLine=True):
+        '''Create instance of Line Sensor'''
+        
+        # Set up pins for linereader
+        GPIO.setwarnings(False) #??? global
+        GPIO.setmode(GPIO.BCM)  #??? global
+        GPIO.setup(pin_right,GPIO.IN)
+        GPIO.setup(pin_middle,GPIO.IN)
+        GPIO.setup(pin_left,GPIO.IN)
+
+
+    def __del__(self):
+        pass
+    def __enter__(self):
+        return self
+    def __exit__(self,exception_type, exception_value, traceback):
+        self.close()
+
+    def __call__(self):
+        '''Return the current state of the line sensor'''
+        return np.array([GPIO.input(line_pin_right),
+                         GPIO.input(line_pin_middle),
+                         GPIO.input(line_pin_left)])
+
+    def close(self):
+        pass
+
+#??? any point inheriting the picamera class... why not just use it
+
+class Camera(PiCamera):
+
+    def __init__(self, resolution=(640.480)):
+        PiCamera.__init__(self)
+        self.resolution=resolution
+        
+        self.rawCapture = PiRGBArray(self) 
+        self.rawCapture.truncate(0)
+        self.rawCapture.seek(0)
+        
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self,exception_type, exception_value, traceback):
+        self.close()
+
+    def close(self):
+        PiCamera.close(self)
+
+    def read(self):
+        '''Return frame same as cv2.read()'''
+        self.rawCapture.truncate(0)
+        self.rawCapture.seek(0)
+        PiCamera.capture(self,self.rawCapture, format="bgr", use_video_port=True)
+        return True,self.rawCapture.array
+
+    def stream(self,sock):
+        self.rawCapture.truncate(0)
+        self.rawCapture.seek(0)
+
+        for frame in self.capture_continuous(output=self.rawCapture,
+                                             format= "bgr",
+                                             use_video_port=True):
+            image = frame.array
+            encoded,buffer = cv2.imencode('.jpg',image)
+            jpg_as_text = base64.b64encode(buffer)
+            sock.send(jpg_as_text)
+
+            self.rawCapture.truncate(0)
+            self.rawCapture.seek(0)
+    
+

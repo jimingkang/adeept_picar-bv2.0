@@ -1,0 +1,12 @@
+'''Test of line following'''
+
+import controls
+import sensors
+
+import numpy as np
+import time
+
+import RPi.GPIO as GPIO
+GPIO.setmode(GPIO.BCM)
+
+motor = controls.Motor(17,27,18)

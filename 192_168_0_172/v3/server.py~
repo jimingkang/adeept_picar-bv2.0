@@ -1,0 +1,94 @@
+#!/usr/bin/python
+import socket
+import zmq
+import time
+from threading import Thread
+import cv2
+import base64
+from picar import PiCar
+
+clientaddr = '192.168.1.151'
+clientaddr = '192.168.1.156'
+clientaddr = '192.168.0.146'
+#TODO: include some basic safety protocols to ensure car doesn't crash
+
+class Reciever:
+    def __init__(self, addr="", port = 5000):
+        #Thread.__init__(self, daemon=True)
+
+        self.size = 1024
+        
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #???
+        sock.bind((addr,port))
+        sock.listen(5) 
+        self.client,self.address = sock.accept()
+        print("New client")
+
+    def recv_cmd(self):
+        cmd = self.client.recv(self.size).rstrip().decode()
+        return cmd
+
+
+class FootageStream(Thread):
+    #TODO: document this class
+    def __init__(self, camera,addr,port=5555):
+        print("initializing live stream")
+        Thread.__init__(self)
+        self.camera = camera
+        context = zmq.Context()
+        self.sock = context.socket(zmq.PUB)
+        self.sock.connect('tcp://{}:{}'.format(addr[0],port)) #??? why not bind
+        
+        print("starting thread")
+        self.start()
+
+    def run(self):
+        '''Send images to the connected socket'''
+        while(True):
+            #TODO: adjust this to match the picamera commands
+            ret,image = self.camera.read()
+            #image = cv2.resize(frame, (640,480))
+            
+            #if self.mode == 'opencv':
+            #    pass #TODO: impliment open cv modes
+            
+            # send image to client
+            encoded, buffer = cv2.imencode('.jpg', image)
+            jpg_as_text = base64.b64encode(buffer)
+            #TODO: send as a numpy array
+            self.sock.send(jpg_as_text)
+        
+            
+
+if __name__=="__main__":
+    
+    #TODO: check the architecture properly
+    try:
+        print("Initializing car")
+        car = PiCar()
+        camera = car.camera
+        print("using car camera")
+    except:
+        camera = cv2.VideoCapture(0)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 480)
+        print("Using web camera")
+
+    reciever = Reciever()
+
+    stream = FootageStream(camera=camera, addr=reciever.address)
+    
+    #controller.close()
+
+    while True:
+        cmd = reciever.recv_cmd()
+        print(cmd)
+        if cmd=="exit":
+            #TODO: kill the footage too
+            break
+        try:
+            car.run_cmd(cmd)
+        except:
+            print("Command didn't run")
+            

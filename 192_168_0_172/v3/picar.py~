@@ -1,0 +1,137 @@
+#!/usr/bin/python3
+
+import controls
+import sensors
+
+import numpy as np
+
+class PiCar:
+    '''PiCar class'''
+
+    def __init__(self):
+        '''Create instance of PiCar'''
+        
+        # Controls
+        print("Setting up controls")
+        self.motor = controls.Motor(17,27,18)
+
+        self.tilt = controls.Servo(0,425,650,515,-30,30,0)
+        self.pan = controls.Servo(1,60,600,330,-90,90,0)
+        self.turn = controls.Servo(2,180,520,370,-45,45,0)
+
+        # Sensors
+        print("Setting up sensors")
+        print("Setting up camera")
+        self.camera = sensors.Camera(resolution=(640,480))
+        print("Setting up sonar")
+        self.sonar = sensors.Sonar()
+
+        #print("Setting up Line Sensor") #TODO: fix line sensor
+        #self.lineSensor = sensors.LineSensor(pin_middle=36,
+        #                                     pin_left=38,
+        #                                     pin_right=35,
+        #                                     blackLine=True)
+        # Variables
+        print("PiCar initialized")
+
+    
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self,exception_type, exception_value, traceback):
+        self.close()
+
+    def close(self):
+        self.camera.close()
+
+    def all_stop(self):
+        self.motor.stop()
+        self.all_ahead()
+
+    def all_ahead(self):
+        self.turn.center()
+        self.tilt.center()
+        self.pan.center()
+
+
+    def run_cmd(self, cmd,arg=None):
+        '''Run a preset command'''
+        # Must match client side commands
+        if cmd == 'disconnect':
+            self.close(),
+        elif cmd == 'forward':
+            self.motor.pulse(100,.1)
+        elif cmd == 'reverse':
+            self.motor.pulse(-100,.1)
+        elif cmd == 'stop':
+            self.motor.stop(),
+        elif cmd == 'all_stop':
+            self.all_stop(),
+        elif cmd == 'all_ahead':
+            self.all_ahead(),
+        elif cmd == 'left':
+            self.turn.rotate(10),
+        elif cmd == 'right':
+            self.turn.rotate(-10),
+        elif cmd == 'tilt_down':
+            self.tilt.rotate(-1),
+        elif cmd == 'tilt_up':
+            self.tilt.rotate(1),
+        elif cmd == 'pan_left':
+            self.pan.rotate(1),
+        elif cmd == 'pan_right':
+            self.pan.rotate(-1)
+        else:
+            pass
+
+    def sonar_scan(self, distance=1, scanSpeed=1, tiltAngle = 0): #TODO: impliment distance
+        '''Measure distances across full range of sonar'''
+
+        self.tilt.goto(tiltAngle)
+        angles = [ang for ang in range(self.pan.MIN,
+                                       self.pan.MAX+scanSpeed,
+                                       scanSpeed)]
+        for angle in angles:
+            self.pan.goto(angle)
+            results.append(self.sonar.ping(distance))
+
+        return results, angles
+
+
+    def follow_line(self, darkLine = False, speed=1, gain = (1,1,1)):
+        '''Look for a line and drive along following it'''
+
+        # Set up a history of observations
+        obs = np.zeros((100,3))
+
+        self._mode=='line'
+        while self._mode=='line':
+            
+            # Take measure with line sensor
+            obs[:-1] = obs[1:]
+            obs[-1] = self.lineSensor()
+
+            # Determine wheel angle based on control algorithm
+            [left, center, right] = obs.sum(0)
+            P = left-right         # Turn in direction of last seen line
+            I = left+center+right  #TODO: think about and fix this
+            D = abs(P)-center      #TODO: think about and fix this
+
+            turnAng = (gain[0]*P + gain[1]*I)/(gain[2]*D+1)
+
+            # Pulse motor and turn wheels according to control algorithm
+
+
+    def track_object(self):
+        '''Keep an object in view and follow it'''
+        pass
+
+    def explore(self):
+        pass
+
+if __name__=='__main__':
+    car = PiCar()
+

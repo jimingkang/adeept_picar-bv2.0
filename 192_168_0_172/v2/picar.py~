@@ -1,0 +1,41 @@
+#!/usr/bin/python3
+
+# Imports
+
+
+# Custom libraries
+import led
+
+from motor import Motor
+from controls import Servo
+from connection import ClientConnection
+
+class PiCar:
+    '''Builds a PiCar class'''
+
+    def __init__(self):
+        #TODO: impliment some behaviour if no client is found
+        client = ClientConnection()
+
+        tiltServo     = Servo(0,425,295,662)
+        panServo      = Servo(1,310,476,140)
+        steeringServo = Servo(2,370,500,280)
+
+        motor = Motor(4,14,15)
+        #motor = Motor(17,27,18)
+
+        sonar = UltraSounder()
+        camera = Camera(sonar.distance,client.addr)
+
+        #TODO: give car access to leds
+        # mainly so it can do the police car thing
+        
+
+    def close(self):
+        camera.close()
+        pass #TODO: impliment code that closes everything nicely
+
+
+    def shakedown(self):
+        '''Run through all capabilities'''
+        steeringServo

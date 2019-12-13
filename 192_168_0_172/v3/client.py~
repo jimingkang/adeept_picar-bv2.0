@@ -1,0 +1,215 @@
+import time
+import cv2
+import numpy as np
+import socket
+from threading import Thread
+import zmq
+import base64
+import imutils
+
+serverAddr = '192.168.0.212'
+
+        
+class LiveFeed(Thread):
+
+    def __init__(self, threaded=False, addr=serverAddr ,port=5555):
+        if threaded:
+            Thread.__init__(self)
+
+        context = zmq.Context()
+        self.sock = context.socket(zmq.SUB)
+        self.sock.bind("tcp://*:{1}".format(addr,port)) #??? connect
+        self.sock.setsockopt_string(zmq.SUBSCRIBE, np.unicode('')) #???
+        self.frame = np.zeros(shape=[640, 480, 3], dtype=np.uint8)
+        self.running=False
+
+        print("feed started")
+        if threaded:
+            self.start()
+
+
+    def read(self):
+        frame = self.sock.recv()
+        img = base64.b64decode(frame)
+        npimg = np.frombuffer(img, dtype=np.uint8)
+        self.frame = cv2.imdecode(npimg,1)
+        return self.frame
+        #self.frame = imutils.resize(frame, width=500)
+
+    def run(self):
+        self.running=True
+        while(self.running==True):
+            self.frame = self.read()
+            cv2.line(self.frame,(300,240),(340,240),(128,255,128),1)
+            cv2.line(self.frame,(320,220),(320,260),(128,255,128),1)
+            #print(self.frame)
+
+
+class Controller:
+    #TODO: impliment controller
+    def __init__(self, addr = serverAddr, port = 5000):
+
+        self.size=1024
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect((addr,port))
+
+        commands = {
+            'q': 'disconnect',
+            'w': 'forward',
+            's': 'reverse',
+            ' ': 'stop',
+            '2': 'all_ahead',
+            'a': 'left',
+            'd': 'right',
+            'i': 'tilt_down',
+            'j': 'pan_left',
+            'k': 'tilt_up',
+            'l': 'pan_right'
+        }
+
+
+    
+    def send_cmd(self, cmd):
+        #TODO: clean this up
+        self.sock.send(cmd.encode())
+
+    def follow_object(self, tracker):
+        
+        # Convert x and y to servo angles
+        
+        # Send command to move head
+        
+        
+        # Large area means object is too close
+        ## Turn wheels away
+        
+        ## Drive reverse
+        
+        # Small area means object is too far
+        ## Turn wheels towards
+        
+        ## Drive forward
+        
+        
+        
+        pass
+
+class ObjectTracker(Thread):
+    
+    def __init__(self, feed, controller, tracker="medianflow", mode="watch"):
+
+        Thread.__init__(self)
+        
+        self.feed = feed
+        self.controller = controller
+        self.mode = mode
+        
+        OPENCV_OBJECT_TRACKERS = {
+	    "csrt": cv2.TrackerCSRT_create,
+	    "kcf": cv2.TrackerKCF_create,
+	    "boosting": cv2.TrackerBoosting_create,
+	    "mil": cv2.TrackerMIL_create,
+	    "tld": cv2.TrackerTLD_create,
+	    "medianflow": cv2.TrackerMedianFlow_create,
+	    "mosse": cv2.TrackerMOSSE_create
+        }
+
+        # extract the OpenCV version info
+        (major, minor) = cv2.__version__.split(".")[:2]
+        
+        # if we are using OpenCV 3.2 OR BEFORE, we can use a special factory
+        # function to create our object tracker
+        if int(major) == 3 and int(minor) < 3:
+            self.tracker = cv2.Tracker_create(tracker.upper())
+        else:
+            self.tracker = OPENCV_OBJECT_TRACKERS[tracker]()
+
+        self.tracking = False
+        
+
+    def select(self,frame):
+        '''Select object to track from a frame'''
+        #TODO: "Stream" replaced with viewname
+        self.box = cv2.selectROI("Stream", frame, fromCenter=False, #TODO: check out fromCenter=True
+                               showCrosshair=True)
+        self.tracker.init(frame,self.box)
+        self.tracking = True
+        #fps = FPS().start() #???
+        return self.box
+
+    def deselect(self):
+        '''Clear selected object and stop tracking'''
+        pass
+
+    def track(self,frame):
+        '''Continue to follow object in new frame'''
+        (success,self.box) = self.tracker.update(frame)
+        return success,self.box
+
+    def run(self):
+        while True:
+            success,self.box = self.tracker.update(feed.frame)
+            
+            
+            # Locate offset from center
+            #TODO: find midpoints better
+            xmid = 640/2
+            ymid = 480/2
+            
+            # find center
+            (x,y,w,h) = [int(v) for v in self.box]
+            x = x+w/2 # center
+            y = y+h/2 # center
+            
+            if x>xmid:
+                controller.send_cmd('pan_right')
+            elif x<xmid:
+                controller.send_cmd('pan_left')
+                
+            if y<ymid:
+                controller.send_cmd('tilt_up')
+            elif y>ymid:
+                controller.send_cmd('tilt_down')
+            
+            area = w*h
+            
+            #print(area)
+            time.sleep(.1)
+
+
+if __name__ == '__main__':
+
+    controller = Controller()
+    feed = LiveFeed(threaded=True)
+    #view_feed(feed)
+    tracker = None
+
+    viewer=True
+    while viewer:
+        frame = feed.frame
+        if tracker:
+            # place box on image
+            (x,y,w,h) = [int(v) for v in tracker.box]
+            cv2.rectangle(frame, (x, y), (x + w, y + h),
+                          (0, 255, 0), 2)
+
+        
+        cv2.imshow("Stream", frame) # imshow must be in main thread
+        key = cv2.waitKey(1) # waitKey must be in main thread
+
+        if key == ord("q"):
+            viewer=False
+
+
+        elif key== ord("s"):
+            tracker = ObjectTracker(feed,controller)
+            tracker.select(feed.frame)
+            tracker.start()
+        
+        # Display speed doesn't need to keep up
+        #time.sleep(.1)
+
+    # Clean up
+    #TODO: close sockets
+    #TODO: close windows

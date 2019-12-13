@@ -1,0 +1,95 @@
+#!/usr/bin/python
+import socket
+import zmq
+from threading import Thread
+import cv2
+import base64
+
+addr = '192.168.1.156'
+addr = '192.168.1.151'
+#TODO: include some basic safety protocols to ensure car doesn't crash
+
+class ControlThread(Thread):
+    def __init__(self, car=None):
+        Thread.__init__(self)
+
+        self.car = car
+
+        host=""
+        port = 5000
+        self.size = 1024
+        
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind((host,port))
+        
+        self.start()
+
+    def run(self):
+        while True:
+            self.sock.listen(5) 
+            client,address = self.sock.accept()
+            print("New client")
+            while True:
+                data = client.recv(self.size).rstrip().decode()
+                if not data:
+                    continue
+                if data == "disconnect":
+                    client.close()
+                    break
+                if data == "shutdown":
+                    client.close()
+                    #TODO: impliment a shutdown command
+                    return
+                try:
+                    #TODO: attempt to run the command 
+                    print(data)
+                except: #TODO: impliment different exceptions for reasons command didnt run
+                    print("Error executing: {}".format(data))
+
+class FootageThread(Thread):
+    #TODO: document this class
+    def __init__(self, camera,addr):
+        print("initializing live stream")
+        Thread.__init__(self)
+        self.camera = camera
+        context = zmq.Context()
+        self.sock = context.socket(zmq.PUB)
+        self.sock.connect('tcp://{}:5555'.format(addr)) #??? why not bind
+        print("starting thread")
+        self.start()
+
+    def run(self):
+        while(True):
+            #TODO: adjust this to match the picamera commands
+            ret,frame = self.camera.read()
+            image = cv2.resize(frame, (640,480))
+            
+            #if self.mode == 'opencv':
+            #    pass #TODO: impliment open cv modes
+            
+            # send image to client
+            encoded, buffer = cv2.imencode('.jpg', image)
+            jpg_as_text = base64.b64encode(buffer)
+            #TODO: send as a numpy array
+            self.sock.send(jpg_as_text)
+        
+            
+
+if __name__=="__main__":
+    
+    control = ControlThread()
+
+    # Pause until control has been established
+    while not control.is_alive():
+        pass
+
+    #TODO: check the architecture properly
+    try:
+        camera = control.car.camera
+    except:
+        camera = cv2.VideoCapture(0)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 480)
+
+    footage = FootageThread(camera=camera, addr=addr)
+    
